@@ -6,4 +6,5 @@ public sealed record EmailRequestBodyDto(
     string User, 
     string Credentials, 
     int EmailsCount, 
-    int Offset);
+    int Offset,
+    int EmailId);

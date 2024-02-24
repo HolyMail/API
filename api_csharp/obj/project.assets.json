@@ -580,11 +580,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/Users/lorenzomarchisio/Desktop/api_csharp/api_csharp/api_csharp.csproj",
+      "projectUniqueName": "/Users/lorenzomarchisio/Desktop/API/api_csharp/api_csharp.csproj",
       "projectName": "api_csharp",
-      "projectPath": "/Users/lorenzomarchisio/Desktop/api_csharp/api_csharp/api_csharp.csproj",
+      "projectPath": "/Users/lorenzomarchisio/Desktop/API/api_csharp/api_csharp.csproj",
       "packagesPath": "/Users/lorenzomarchisio/.nuget/packages/",
-      "outputPath": "/Users/lorenzomarchisio/Desktop/api_csharp/api_csharp/obj/",
+      "outputPath": "/Users/lorenzomarchisio/Desktop/API/api_csharp/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "/Users/lorenzomarchisio/.nuget/NuGet/NuGet.Config"

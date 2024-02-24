@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "qsg1JBAK5Sgul2yB0R7PYanEHik/Qdx3CO86wSQWuXR/xuBtzKqsFk55GXiIv8wwy1UnfXR2Vm5okBbBjJnwCA==",
+  "dgSpecHash": "9V4AME/GKqxLMuCgabOO7ZIuuk80VDYdSZMc5flBVAyzII3+w7VxuF4sMfS+uWbyq8vsqXkeheX+1b5XpT02EQ==",
   "success": true,
-  "projectFilePath": "/Users/lorenzomarchisio/Desktop/api_csharp/api_csharp/api_csharp.csproj",
+  "projectFilePath": "/Users/lorenzomarchisio/Desktop/API/api_csharp/api_csharp.csproj",
   "expectedPackageFiles": [
     "/Users/lorenzomarchisio/.nuget/packages/bouncycastle.cryptography/2.2.1/bouncycastle.cryptography.2.2.1.nupkg.sha512",
     "/Users/lorenzomarchisio/.nuget/packages/mailkit/4.3.0/mailkit.4.3.0.nupkg.sha512",

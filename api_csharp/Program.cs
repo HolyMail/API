@@ -1,13 +1,11 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using api_csharp;
 using api_csharp.DTO;
+using api_csharp.Extensions;
 using MailKit;
 using MailKit.Net.Imap;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.AspNetCore.Mvc;
-using MimeKit;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,23 +39,7 @@ app.MapPost("emails/apple/list", async ([FromBody] EmailRequestBodyDto body) =>
 
         await inbox.OpenAsync(FolderAccess.ReadOnly);
 
-        var results = (await inbox
-                .FetchAsync(body.Offset, body.Offset + body.EmailsCount - 1,
-                    MessageSummaryItems.Body | MessageSummaryItems.Envelope))
-            .Select(summary =>
-            {
-                var message = summary.Body is not null
-                    ? ((TextPart)inbox.GetBodyPart(summary.UniqueId, summary.HtmlBody)).Text
-                    : "";
-
-                return new EmailResponse(
-                    From: summary.Envelope.From.Mailboxes.FirstOrDefault()?.Address ?? "",
-                    To: summary.Envelope.To.Mailboxes.FirstOrDefault()?.Address ?? "",
-                    Subject: summary.Envelope.Subject,
-                    Message: message,
-                    DateTime: summary.Date.DateTime
-                );
-            });
+        var results = await inbox.FetchAsync(body.EmailsCount, body.Offset);
 
         return Results.Ok(results);
     }
@@ -94,7 +76,36 @@ app.MapPost("emails/apple/send", async ([FromBody] EmailSendBodyDto body) =>
     {
         return Results.Problem("Internal server error");
     }
-}); 
+});
+
+app.MapPost("emails/apple/details", async ([FromBody] EmailRequestBodyDto body) =>
+{
+    var imapClient = new ImapClient();
+    try
+    {
+        await imapClient.ConnectAsync(EmailServerConfig.AppleImapServerAddress, 993, true);
+
+        await imapClient.AuthenticateAsync(body.User, body.Credentials);
+
+        var inbox = imapClient.Inbox;
+
+        await inbox.OpenAsync(FolderAccess.ReadOnly);
+
+        var message = await inbox.GetMessageAsync(body.EmailId);
+
+        var results = EmailDetailsDto.FromMimeMessage(message);
+
+        return Results.Ok(results);
+    }
+    catch (Exception)
+    {
+        return Results.Problem("Internal server error");
+    }
+    finally
+    {
+        await imapClient.DisconnectAsync(true);
+    }
+});
 
 #endregion
 
@@ -112,24 +123,9 @@ app.MapPost("emails/google/list", async ([FromBody] EmailRequestBodyDto body) =>
         var inbox = imapClient.Inbox;
         
         await inbox.OpenAsync(FolderAccess.ReadOnly);
-
-        var results = (await inbox
-            .FetchAsync(body.Offset, body.Offset + body.EmailsCount - 1, MessageSummaryItems.Body | MessageSummaryItems.Envelope))
-            .Select(summary =>
-            {
-                var message = summary.Body is not null
-                    ? ((TextPart)inbox.GetBodyPart(summary.UniqueId, summary.HtmlBody)).Text
-                    : "";
-
-                return new EmailResponse(
-                    From: summary.Envelope.From.Mailboxes.FirstOrDefault()?.Address ?? "",
-                    To: summary.Envelope.To.Mailboxes.FirstOrDefault()?.Address ?? "",
-                    Subject: summary.Envelope.Subject,
-                    Message: message,
-                    DateTime: summary.Date.DateTime
-                );
-            });
         
+        var results = await inbox.FetchAsync(body.EmailsCount, body.Offset);
+
         return Results.Ok(results);
     }
     catch (Exception)
@@ -164,6 +160,35 @@ app.MapPost("emails/google/send", async ([FromBody] EmailSendBodyDto body) =>
     catch (Exception)
     {
         return Results.Problem("Internal server error");
+    }
+});
+
+app.MapPost("emails/google/details", async ([FromBody] EmailRequestBodyDto body) =>
+{
+    var imapClient = new ImapClient();
+    try
+    {
+        await imapClient.ConnectAsync(EmailServerConfig.GoogleImapServerAddress, 993, true);
+    
+        await imapClient.AuthenticateAsync(new SaslMechanismOAuth2(body.User, body.Credentials));
+
+        var inbox = imapClient.Inbox;
+
+        await inbox.OpenAsync(FolderAccess.ReadOnly);
+
+        var message = await inbox.GetMessageAsync(body.EmailId);
+
+        var results = EmailDetailsDto.FromMimeMessage(message);
+
+        return Results.Ok(results);
+    }
+    catch (Exception)
+    {
+        return Results.Problem("Internal server error");
+    }
+    finally
+    {
+        await imapClient.DisconnectAsync(true);
     }
 });
 
