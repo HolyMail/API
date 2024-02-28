@@ -1,3 +1,4 @@
+using api_csharp.Cache;
 using api_csharp.DTO;
 using MailKit;
 
@@ -22,10 +23,11 @@ public static class CustomExtensions
         
         var results = (await inbox
                 .FetchAsync(min, max,
-                    MessageSummaryItems.Body | MessageSummaryItems.Envelope | MessageSummaryItems.UniqueId | MessageSummaryItems.PreviewText))
+                    MessageSummaryItems.Body | MessageSummaryItems.Envelope | MessageSummaryItems.UniqueId ))
             .Select(EmailHeaders.FromSummary)
             .OrderByDescending(x => x.DateTime)
             .ToArray();
+        
 
         var end = min == 0;
         

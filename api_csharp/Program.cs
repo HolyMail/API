@@ -1,6 +1,8 @@
 using api_csharp;
+using api_csharp.Cache;
 using api_csharp.DTO;
 using api_csharp.Extensions;
+
 using MailKit;
 using MailKit.Net.Imap;
 using MailKit.Net.Smtp;
@@ -11,9 +13,12 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// CACHE
+builder.Services
+    .AddSingleton(Cache.Create<string, ImapClient>(100_000))
+    .AddSingleton(Cache.Create<string, SmtpClient>(100_000));
+
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll",
@@ -26,6 +31,11 @@ builder.Services.AddCors(options =>
         });
 });
 
+// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -35,21 +45,45 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+// CORS
 app.UseCors("AllowAll");
+
+// CACHE
+app.UseResponseCaching();
 
 
 #region apple
 
-app.MapPost("emails/apple/list", async ([FromBody] EmailRequestBodyDto body) =>
+app.MapPost("emails/apple/list", async (
+    Cache<string, ImapClient> cache, 
+    [FromBody] EmailRequestBodyDto body) =>
 {
-    var imapClient = new ImapClient();
+
+    var imapClient = cache.Get(body.User);
     try
     {
-        await imapClient.ConnectAsync(EmailServerConfig.AppleImapServerAddress, 993, true);
+        if (imapClient is null)
+        {
+            imapClient = new ImapClient();
+            
+            await imapClient.ConnectAsync(EmailServerConfig.AppleImapServerAddress, 993, true);
 
-        await imapClient.AuthenticateAsync(body.User, body.Credentials);
+            await imapClient.AuthenticateAsync(body.User, body.Credentials);
+            
+            var removed = cache.Add(body.User, imapClient);
+
+            if (removed is not null)
+            {
+                await removed.DisconnectAsync(true);
+            }
+        }
 
         var inbox = imapClient.Inbox;
+        
+        if (!inbox.IsOpen)
+        {
+            await inbox.OpenAsync(FolderAccess.ReadOnly);
+        }
 
         await inbox.OpenAsync(FolderAccess.ReadOnly);
 
@@ -61,24 +95,34 @@ app.MapPost("emails/apple/list", async ([FromBody] EmailRequestBodyDto body) =>
     {
         return Results.Problem("Internal server error");
     }
-    finally
-    {
-        await imapClient.DisconnectAsync(true);
-    }
 });
 
-app.MapPost("emails/apple/send", async ([FromBody] EmailSendBodyDto body) =>
+app.MapPost("emails/apple/send", async (
+    Cache<string, SmtpClient> cache,
+    [FromBody] EmailSendBodyDto body ) =>
 {
     try
     {
         using var message = body.ToMimeMessage();
 
-        var smtpClient = new SmtpClient();
-    
-        await smtpClient.ConnectAsync(EmailServerConfig.AppleSmtpServerAddress, 587, SecureSocketOptions.StartTls);
-    
-        await smtpClient.AuthenticateAsync(body.User, body.Credentials);
+        var smtpClient = cache.Get(body.User);
 
+        if (smtpClient is null)
+        {
+            smtpClient = new SmtpClient();
+            
+            await smtpClient.ConnectAsync(EmailServerConfig.AppleSmtpServerAddress, 587, SecureSocketOptions.StartTls);
+    
+            await smtpClient.AuthenticateAsync(body.User, body.Credentials);
+
+            var removed = cache.Add(body.User, smtpClient);
+            
+            if (removed is not null)
+            {
+                await removed.DisconnectAsync(true);
+            }
+        }
+        
         await smtpClient.SendAsync(message);
         
         return Results.Ok(new
@@ -92,18 +136,35 @@ app.MapPost("emails/apple/send", async ([FromBody] EmailSendBodyDto body) =>
     }
 });
 
-app.MapPost("emails/apple/details", async ([FromBody] EmailRequestBodyDto body) =>
+app.MapPost("emails/apple/details", async (
+    Cache<string, ImapClient> cache,
+    [FromBody] EmailRequestBodyDto body) =>
 {
-    var imapClient = new ImapClient();
+    var imapClient = cache.Get(body.User);
     try
     {
-        await imapClient.ConnectAsync(EmailServerConfig.AppleImapServerAddress, 993, true);
+        if (imapClient is null)
+        {
+            imapClient = new ImapClient();
+            
+            await imapClient.ConnectAsync(EmailServerConfig.AppleImapServerAddress, 993, true);
 
-        await imapClient.AuthenticateAsync(body.User, body.Credentials);
+            await imapClient.AuthenticateAsync(body.User, body.Credentials);
+            
+            var removed = cache.Add(body.User, imapClient);
 
+            if (removed is not null)
+            {
+                await removed.DisconnectAsync(true);
+            }
+        }
+        
         var inbox = imapClient.Inbox;
 
-        await inbox.OpenAsync(FolderAccess.ReadOnly);
+        if (!inbox.IsOpen)
+        {
+            await inbox.OpenAsync(FolderAccess.ReadOnly);
+        }
 
         var message = await inbox.GetMessageAsync(body.EmailId);
 
@@ -114,10 +175,6 @@ app.MapPost("emails/apple/details", async ([FromBody] EmailRequestBodyDto body) 
     catch (Exception)
     {
         return Results.Problem("Internal server error");
-    }
-    finally
-    {
-        await imapClient.DisconnectAsync(true);
     }
 });
 
@@ -125,18 +182,35 @@ app.MapPost("emails/apple/details", async ([FromBody] EmailRequestBodyDto body) 
 
 #region google
 
-app.MapPost("emails/google/list", async ([FromBody] EmailRequestBodyDto body) =>
+app.MapPost("emails/google/list", async (
+    Cache<string, ImapClient> cache,
+    [FromBody] EmailRequestBodyDto body) =>
 {
-    var imapClient = new ImapClient();
+    var imapClient = cache.Get(body.User);
     try
     {
-        await imapClient.ConnectAsync(EmailServerConfig.GoogleImapServerAddress, 993, true);
-    
-        await imapClient.AuthenticateAsync(new SaslMechanismOAuth2(body.User, body.Credentials));
+        if (imapClient is null)
+        {
+            imapClient = new ImapClient();
+            
+            await imapClient.ConnectAsync(EmailServerConfig.GoogleImapServerAddress, 993, true);
+
+            await imapClient.AuthenticateAsync(new SaslMechanismOAuth2(body.User, body.Credentials));
+            
+            var removed = cache.Add(body.User, imapClient);
+
+            if (removed is not null)
+            {
+                await removed.DisconnectAsync(true);
+            }
+        }
 
         var inbox = imapClient.Inbox;
         
-        await inbox.OpenAsync(FolderAccess.ReadOnly);
+        if (!inbox.IsOpen)
+        {
+            await inbox.OpenAsync(FolderAccess.ReadOnly);
+        }
         
         var results = await inbox.FetchAsync(body.EmailsCount, body.Offset);
 
@@ -146,24 +220,34 @@ app.MapPost("emails/google/list", async ([FromBody] EmailRequestBodyDto body) =>
     {
         return Results.Problem("Internal server error");
     }
-    finally
-    {
-        await imapClient.DisconnectAsync(true);
-    }
 });
 
-app.MapPost("emails/google/send", async ([FromBody] EmailSendBodyDto body) =>
+app.MapPost("emails/google/send", async (
+    Cache<string, SmtpClient> cache,
+    [FromBody] EmailSendBodyDto body) =>
 {
     try
     {
         var message = body.ToMimeMessage();
 
-        using var smtpClient = new SmtpClient();
+        var smtpClient = cache.Get(body.User);
+        
+        if (smtpClient is null)
+        {
+            smtpClient = new SmtpClient();
+            
+            await smtpClient.ConnectAsync(EmailServerConfig.AppleSmtpServerAddress, 587, SecureSocketOptions.StartTls);
+    
+            await smtpClient.AuthenticateAsync(new SaslMechanismOAuth2(body.User, body.Credentials));
 
-        await smtpClient.ConnectAsync(EmailServerConfig.GoogleSmtpServerAddress, 587, SecureSocketOptions.StartTls);
-
-        await smtpClient.AuthenticateAsync(new SaslMechanismOAuth2(body.User, body.Credentials));
-
+            var removed = cache.Add(body.User, smtpClient);
+            
+            if (removed is not null)
+            {
+                await removed.DisconnectAsync(true);
+            }
+        }
+        
         await smtpClient.SendAsync(message);
 
         return Results.Ok(new
@@ -177,19 +261,36 @@ app.MapPost("emails/google/send", async ([FromBody] EmailSendBodyDto body) =>
     }
 });
 
-app.MapPost("emails/google/details", async ([FromBody] EmailRequestBodyDto body) =>
+app.MapPost("emails/google/details", async (
+    Cache<string, ImapClient> cache,
+    [FromBody] EmailRequestBodyDto body) =>
 {
-    var imapClient = new ImapClient();
+    var imapClient = cache.Get(body.User);
     try
     {
-        await imapClient.ConnectAsync(EmailServerConfig.GoogleImapServerAddress, 993, true);
-    
-        await imapClient.AuthenticateAsync(new SaslMechanismOAuth2(body.User, body.Credentials));
+        if (imapClient is null)
+        {
+            imapClient = new ImapClient();
+            
+            await imapClient.ConnectAsync(EmailServerConfig.GoogleImapServerAddress, 993, true);
 
+            await imapClient.AuthenticateAsync(new SaslMechanismOAuth2(body.User, body.Credentials));
+            
+            var removed = cache.Add(body.User, imapClient);
+
+            if (removed is not null)
+            {
+                await removed.DisconnectAsync(true);
+            }
+        }
+        
         var inbox = imapClient.Inbox;
 
-        await inbox.OpenAsync(FolderAccess.ReadOnly);
-
+        if (!inbox.IsOpen)
+        {
+            await inbox.OpenAsync(FolderAccess.ReadOnly);
+        }
+        
         var message = await inbox.GetMessageAsync(body.EmailId);
 
         var results = EmailDetailsDto.FromMimeMessage(message);
@@ -199,10 +300,6 @@ app.MapPost("emails/google/details", async ([FromBody] EmailRequestBodyDto body)
     catch (Exception)
     {
         return Results.Problem("Internal server error");
-    }
-    finally
-    {
-        await imapClient.DisconnectAsync(true);
     }
 });
 
