@@ -23,7 +23,7 @@ public static class CustomExtensions
         
         var results = (await inbox
                 .FetchAsync(min, max,
-                    MessageSummaryItems.Body | MessageSummaryItems.Envelope | MessageSummaryItems.UniqueId ))
+                     MessageSummaryItems.Envelope | MessageSummaryItems.UniqueId | MessageSummaryItems.PreviewText ))
             .Select(EmailHeaders.FromSummary)
             .OrderByDescending(x => x.DateTime)
             .ToArray();
